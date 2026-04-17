@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Deadlock: Spirit Grid</title>
+    <title>Deadlock: Spirit Drive</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -13,31 +13,35 @@
             position: fixed; touch-action: none; font-family: sans-serif;
         }
         #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        /* ИНТЕРФЕЙС */
         #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
-        #score-box { 
-            position: absolute; top: env(safe-area-inset-top, 20px); left: 20px; 
-            font-weight: 900; font-size: 18px; color: #e1b16c; 
-            text-shadow: 0 0 8px rgba(225, 177, 108, 0.6);
-        }
-        #lives-box { position: absolute; top: env(safe-area-inset-top, 20px); right: 20px; font-size: 20px; color: #e1b16c; letter-spacing: 2px; }
-        #controls {
+        #score-box { position: absolute; top: env(safe-area-inset-top, 20px); left: 20px; color: #e1b16c; font-weight: 900; font-size: 18px; }
+        #lives-box { position: absolute; top: env(safe-area-inset-top, 20px); right: 20px; color: #e1b16c; font-size: 20px; letter-spacing: 2px; }
+
+        /* ИСПРАВЛЕННЫЕ СТРЕЛКИ */
+        #controls-wrapper {
             position: absolute; bottom: 40px; left: 50%;
             transform: translateX(-50%);
-            display: grid; grid-template-areas: ". up ." "left down right"; gap: 15px; pointer-events: auto;
+            display: flex; flex-direction: column; align-items: center;
+            gap: 10px; pointer-events: auto;
         }
+        .row { display: flex; gap: 10px; }
         .btn {
-            width: 60px; height: 60px; background: rgba(0, 0, 0, 0.8);
-            border: 1px solid rgba(225, 177, 108, 0.5); border-radius: 50%;
+            width: 65px; height: 65px; background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #e1b16c; border-radius: 12px;
             display: flex; justify-content: center; align-items: center;
-            color: #e1b16c; font-size: 22px; user-select: none;
+            color: #e1b16c; font-size: 24px; user-select: none;
         }
+        .btn:active { background: #e1b16c; color: #000; }
+
         #game-over { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0, 0, 0, 0.95); display: none; 
             flex-direction: column; justify-content: center; align-items: center; 
             z-index: 100; pointer-events: auto; color: #e1b16c;
         }
-        #restart-btn { padding: 12px 35px; border: 1px solid #e1b16c; background: transparent; color: #e1b16c; border-radius: 4px; font-weight: bold; margin-top: 20px; cursor: pointer; }
+        #restart-btn { padding: 12px 35px; border: 2px solid #e1b16c; background: transparent; color: #e1b16c; border-radius: 4px; font-weight: bold; margin-top: 20px; }
     </style>
 </head>
 <body>
@@ -46,16 +50,20 @@
     <div id="ui">
         <div id="score-box">SPIRIT: <span id="score">0</span></div>
         <div id="lives-box">🜲🜲🜲</div>
-        <div id="controls">
+        
+        <div id="controls-wrapper">
             <div class="btn" id="up">▲</div>
-            <div class="btn" id="left">◀</div>
-            <div class="btn" id="down">▼</div>
-            <div class="btn" id="right">▶</div>
+            <div class="row">
+                <div class="btn" id="left">◀</div>
+                <div class="btn" id="down">▼</div>
+                <div class="btn" id="right">▶</div>
+            </div>
         </div>
+
         <div id="game-over">
-            <h1>RECALL FAILED</h1>
+            <h1>CONNECTION LOST</h1>
             <p id="f-score">0</p>
-            <div id="restart-btn" onclick="location.reload()">REBOOT</div>
+            <div id="restart-btn" onclick="location.reload()">RE-SYNC</div>
         </div>
     </div>
 
@@ -65,87 +73,72 @@
         const tg = window.Telegram.WebApp;
         tg.ready(); tg.expand();
 
-        let score = 0, lives = 3, isGameOver = false, currentSpeed = 0.32;
+        let score = 0, lives = 3, isGameOver = false, currentSpeed = 0.35;
         let input = { x: 0, y: 0 }, vel = { x: 0, y: 0 };
         
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x020202);
-        scene.fog = new THREE.Fog(0x020202, 20, 110);
+        scene.background = new THREE.Color(0x010101);
+        scene.fog = new THREE.Fog(0x010101, 10, 100);
 
-        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setPixelRatio(window.devicePixelRatio);
         document.getElementById('game-canvas').appendChild(renderer.domElement);
 
-        // --- ГЕНЕРАЦИЯ ТЕКСТУРЫ РЕШЕТКИ ---
-        function createGridTexture() {
-            const size = 512;
+        // --- ТЕКСТУРА ПОЛА (С ДВИЖЕНИЕМ) ---
+        let gridTexture;
+        function createGrid() {
+            const size = 256;
             const canvas = document.createElement('canvas');
             canvas.width = size; canvas.height = size;
             const ctx = canvas.getContext('2d');
             
-            ctx.fillStyle = '#050505'; // Фон пола
-            ctx.fillRect(0, 0, size, size);
-            
-            ctx.strokeStyle = '#e1b16c'; // Золотая решетка
-            ctx.lineWidth = 4;
+            ctx.fillStyle = '#05080a'; ctx.fillRect(0, 0, size, size);
+            ctx.strokeStyle = '#e1b16c'; ctx.lineWidth = 4;
             ctx.strokeRect(0, 0, size, size);
-            
-            // Магическая бирюзовая точка в пересечении
-            ctx.fillStyle = '#00ffff';
-            ctx.beginPath();
-            ctx.arc(0, 0, 8, 0, Math.PI*2);
-            ctx.fill();
+            // Добавим неоновое свечение в углы
+            ctx.shadowBlur = 10; ctx.shadowColor = '#00ffff';
+            ctx.fillStyle = '#00ffff'; ctx.fillRect(0,0,5,5);
 
-            const texture = new THREE.CanvasTexture(canvas);
-            texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(10, 50); // Плотность решетки
-            return texture;
+            gridTexture = new THREE.CanvasTexture(canvas);
+            gridTexture.wrapS = gridTexture.wrapT = THREE.RepeatWrapping;
+            gridTexture.repeat.set(15, 60);
+            return gridTexture;
         }
 
-        // Создаем пол (Plane)
-        const gridGeo = new THREE.PlaneGeometry(100, 500);
-        const gridMat = new THREE.MeshStandardMaterial({ 
-            map: createGridTexture(),
-            metalness: 0.8,
-            roughness: 0.2,
-            emissive: 0xe1b16c,
-            emissiveIntensity: 0.05
-        });
-        const floor = new THREE.Mesh(gridGeo, gridMat);
+        const floor = new THREE.Mesh(
+            new THREE.PlaneGeometry(120, 800),
+            new THREE.MeshStandardMaterial({ map: createGrid(), emissive: 0xe1b16c, emissiveIntensity: 0.1 })
+        );
         floor.rotation.x = -Math.PI / 2;
-        floor.position.y = -10; // Глубоко внизу
+        floor.position.y = -8;
         scene.add(floor);
 
         // --- СОВА ---
         const owl = new THREE.Group();
-        owl.scale.set(0.75, 0.75, 0.75);
-        const energyMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 2.5, transparent: true, opacity: 0.8 });
+        owl.scale.set(0.7, 0.7, 0.7);
+        const energyMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 3, transparent: true, opacity: 0.8 });
         
-        const body = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.8, 5), energyMat);
+        const body = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.6, 5), energyMat);
         body.rotation.x = Math.PI / 2;
         owl.add(body);
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), energyMat);
+        head.position.z = -0.8; owl.add(head);
         
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), energyMat);
-        head.position.z = -0.9;
-        owl.add(head);
-
-        const wingG = new THREE.BoxGeometry(2, 0.02, 0.6);
+        const wingG = new THREE.BoxGeometry(2, 0.02, 0.5);
         const lW = new THREE.Mesh(wingG, energyMat); lW.position.set(-1, 0, -0.1);
         const rW = new THREE.Mesh(wingG, energyMat); rW.position.set(1, 0, -0.1);
         owl.add(lW, rW);
         scene.add(owl);
-
-        owl.add(new THREE.PointLight(0x00ffff, 3, 15));
-        scene.add(new THREE.AmbientLight(0xffffff, 0.1));
+        owl.add(new THREE.PointLight(0x00ffff, 4, 15));
 
         // --- ПОРТАЛЫ ---
         const portals = [];
-        const portMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 1, wireframe: true });
-        for(let i=0; i<10; i++) {
-            const p = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.05, 8, 24), portMat);
-            p.position.set(Math.random()*14-7, Math.random()*10-5, -i*35 - 40);
+        const portMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 1.5, wireframe: true });
+        for(let i=0; i<8; i++) {
+            const p = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.05, 8, 20), portMat);
+            p.position.set(Math.random()*12-6, Math.random()*8-4, -i*40 - 40);
             scene.add(p); portals.push(p);
         }
 
@@ -164,21 +157,20 @@
 
             owl.position.z -= currentSpeed;
             
-            // Плавное маневрирование
-            const targetVelX = input.x * 0.18;
-            const targetVelY = input.y * 0.15;
-            vel.x += (targetVelX - vel.x) * 0.08;
-            vel.y += (targetVelY - vel.y) * 0.08;
+            // ДВИЖЕНИЕ ПОЛА (offset создает эффект езды)
+            if (gridTexture) {
+                gridTexture.offset.y -= currentSpeed * 0.05;
+                floor.position.z = owl.position.z - 100;
+            }
+
+            vel.x += (input.x * 0.15 - vel.x) * 0.08;
+            vel.y += (input.y * 0.12 - vel.y) * 0.08;
             owl.position.x += vel.x;
             owl.position.y += vel.y;
 
-            // Движение пола за совой
-            floor.position.z = owl.position.z - 100;
-
-            lW.rotation.z = Math.sin(Date.now() * 0.007) * 0.5;
-            rW.rotation.z = -Math.sin(Date.now() * 0.007) * 0.5;
+            lW.rotation.z = Math.sin(Date.now() * 0.008) * 0.6;
+            rW.rotation.z = -Math.sin(Date.now() * 0.008) * 0.6;
             owl.rotation.z = THREE.MathUtils.lerp(owl.rotation.z, -vel.x * 5, 0.1);
-            owl.rotation.x = THREE.MathUtils.lerp(owl.rotation.x, vel.y * 3, 0.1);
 
             camera.position.set(owl.position.x*0.4, owl.position.y*0.4 + 2.5, owl.position.z + 10);
             camera.lookAt(owl.position.x, owl.position.y, owl.position.z - 6);
@@ -187,27 +179,21 @@
                 const dist = Math.sqrt((owl.position.x-p.position.x)**2 + (owl.position.y-p.position.y)**2);
                 if (!p.userData.passed && Math.abs(p.position.z - owl.position.z) < 1.0) {
                     if (dist < 3.3) {
-                        score += 10;
-                        document.getElementById('score').innerText = score;
+                        score += 10; document.getElementById('score').innerText = score;
                         p.userData.passed = true;
-                        if (score > 0 && score % 100 === 0) currentSpeed *= 1.10;
+                        if (score % 100 === 0) currentSpeed *= 1.1;
                         tg.HapticFeedback.impactOccurred('light');
                     }
                 }
                 if (p.position.z > owl.position.z + 12) {
                     if (!p.userData.passed) {
-                        lives--;
-                        document.getElementById('lives-box').innerText = "🜲".repeat(Math.max(0, lives));
+                        lives--; document.getElementById('lives-box').innerText = "🜲".repeat(Math.max(0, lives));
                         tg.HapticFeedback.notificationOccurred('error');
-                        if (lives <= 0) {
-                            isGameOver = true;
-                            document.getElementById('f-score').innerText = "SCORE: " + score;
-                            document.getElementById('game-over').style.display = 'flex';
-                        }
+                        if (lives <= 0) { isGameOver = true; document.getElementById('game-over').style.display = 'flex'; }
                     }
                     p.userData.passed = false;
-                    p.position.z -= 350;
-                    p.position.x = Math.random()*14-7; p.position.y = Math.random()*10-5;
+                    p.position.z -= 320;
+                    p.position.x = Math.random()*12-6; p.position.y = Math.random()*8-4;
                 }
             });
 
@@ -215,15 +201,11 @@
         }
 
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        setTimeout(() => {
-            window.dispatchEvent(new Event('resize'));
-            animate();
-        }, 300);
+        setTimeout(() => { window.dispatchEvent(new Event('resize')); animate(); }, 300);
     </script>
 </body>
 </html>
