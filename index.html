@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Deadlock: Spirit Owl</title>
+    <title>Deadlock Spirit: Stabilized</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -22,29 +22,32 @@
         }
         #score-box { 
             position: absolute; top: env(safe-area-inset-top, 20px); left: 20px; 
-            font-weight: 900; font-size: 22px; color: #e1b16c; 
+            font-weight: 900; font-size: 20px; color: #e1b16c; 
             text-shadow: 0 0 10px rgba(225, 177, 108, 0.5);
         }
+        #lives-box { 
+            position: absolute; top: env(safe-area-inset-top, 20px); right: 20px; 
+            font-size: 22px; letter-spacing: 3px;
+        }
 
-        /* КНОПКИ УПРАВЛЕНИЯ (Стрелочки) */
+        /* Кнопки управления */
         #controls {
-            position: absolute; bottom: 30px; left: 50%;
+            position: absolute; bottom: 40px; left: 50%;
             transform: translateX(-50%);
             display: grid;
             grid-template-areas: 
                 ". up ."
                 "left down right";
-            gap: 10px;
+            gap: 12px;
             pointer-events: auto;
         }
         .btn {
-            width: 65px; height: 65px;
-            background: rgba(225, 177, 108, 0.1);
-            border: 2px solid #e1b16c;
-            border-radius: 12px;
+            width: 60px; height: 60px;
+            background: rgba(225, 177, 108, 0.05);
+            border: 2px solid rgba(225, 177, 108, 0.4);
+            border-radius: 15px;
             display: flex; justify-content: center; align-items: center;
-            color: #e1b16c; font-size: 30px; font-weight: bold;
-            user-select: none;
+            color: #e1b16c; font-size: 24px; user-select: none;
         }
         .btn:active { background: rgba(225, 177, 108, 0.3); transform: scale(0.9); }
         #up { grid-area: up; }
@@ -58,7 +61,7 @@
             flex-direction: column; justify-content: center; align-items: center; 
             z-index: 100; pointer-events: auto; color: #e1b16c;
         }
-        #restart-btn { padding: 15px 40px; background: #e1b16c; color: #0a0e17; border-radius: 8px; font-weight: bold; margin-top: 20px; }
+        #restart-btn { padding: 15px 40px; background: #e1b16c; color: #0a0e17; border-radius: 8px; font-weight: bold; margin-top: 20px; cursor: pointer;}
     </style>
 </head>
 <body>
@@ -67,6 +70,7 @@
 
     <div id="ui">
         <div id="score-box">SPIRIT: <span id="score">0</span></div>
+        <div id="lives-box">🜲🜲🜲</div>
         
         <div id="controls">
             <div class="btn" id="up">▲</div>
@@ -76,9 +80,9 @@
         </div>
 
         <div id="game-over">
-            <h1>SPIRIT LOST</h1>
+            <h1>SPIRIT DISSIPATED</h1>
             <p id="f-score">SCORE: 0</p>
-            <div id="restart-btn" onclick="location.reload()">RECLAIM</div>
+            <div id="restart-btn" onclick="location.reload()">RECLAIM ENERGY</div>
         </div>
     </div>
 
@@ -88,13 +92,13 @@
         const tg = window.Telegram.WebApp;
         tg.ready(); tg.expand();
 
-        let score = 0, isGameOver = false, speed = 0.28;
+        // Баланс скорости: 0.2 - медленно, 0.3 - средне
+        let score = 0, lives = 3, isGameOver = false, currentSpeed = 0.22;
         let input = { x: 0, y: 0 }, vel = { x: 0, y: 0 };
         
-        // ГРАФИКА
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x0a0e17);
-        scene.fog = new THREE.Fog(0x0a0e17, 20, 110);
+        scene.fog = new THREE.Fog(0x0a0e17, 20, 100);
 
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -102,94 +106,60 @@
         renderer.setPixelRatio(window.devicePixelRatio);
         document.getElementById('game-canvas').appendChild(renderer.domElement);
 
-        // СВЕТЯЩАЯСЯ БИРЮЗОВАЯ СОВА (ЭНЕРГИЯ)
+        // Светящаяся сова
         const owl = new THREE.Group();
         const energyMat = new THREE.MeshStandardMaterial({ 
-            color: 0x00ffff, 
-            emissive: 0x00ffff, 
-            emissiveIntensity: 2.5,
-            transparent: true,
-            opacity: 0.8
+            color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 2.5,
+            transparent: true, opacity: 0.85
         });
 
-        // Тело совы
-        const body = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2.2, 5), energyMat);
-        body.rotation.x = Math.PI/2;
-        owl.add(body);
-
-        // Голова и глаза
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 8), energyMat);
-        head.position.z = -1.1;
+        owl.add(new THREE.Mesh(new THREE.ConeGeometry(0.4, 2, 5), energyMat)); // Тело
+        owl.children.rotation.x = Math.PI/2;
+        
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), energyMat);
+        head.position.z = -1;
         owl.add(head);
 
-        // Крылья
-        const wingGeom = new THREE.BoxGeometry(2.5, 0.02, 0.8);
-        const leftWing = new THREE.Mesh(wingGeom, energyMat);
-        leftWing.position.set(-1.2, 0, -0.2);
-        const rightWing = new THREE.Mesh(wingGeom, energyMat);
-        rightWing.position.set(1.2, 0, -0.2);
-        owl.add(leftWing, rightWing);
-
+        const wingG = new THREE.BoxGeometry(2.2, 0.02, 0.7);
+        const lW = new THREE.Mesh(wingG, energyMat); lW.position.set(-1.1, 0, -0.2);
+        const rW = new THREE.Mesh(wingG, energyMat); rW.position.set(1.1, 0, -0.2);
+        owl.add(lW, rW);
         scene.add(owl);
 
-        // Свет от совы
-        const pointLight = new THREE.PointLight(0x00ffff, 2, 10);
-        owl.add(pointLight);
+        owl.add(new THREE.PointLight(0x00ffff, 2, 12));
+        scene.add(new THREE.AmbientLight(0x404040, 0.5));
 
-        // Порталы (Души)
         const portals = [];
-        const portMat = new THREE.MeshStandardMaterial({ 
-            color: 0x00ffff, 
-            emissive: 0x00ffff, 
-            emissiveIntensity: 1, 
-            wireframe: true 
-        });
+        const portMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 1, wireframe: true });
         for(let i=0; i<8; i++) {
-            const p = new THREE.Mesh(new THREE.TorusGeometry(3, 0.05, 8, 30), portMat);
-            p.position.set(Math.random()*16-8, Math.random()*12-6, -i*35 - 30);
+            const p = new THREE.Mesh(new THREE.TorusGeometry(3, 0.04, 8, 24), portMat);
+            p.position.set(Math.random()*14-7, Math.random()*10-5, -i*35 - 40);
+            p.userData.passed = false;
             scene.add(p); portals.push(p);
         }
 
-        // --- УПРАВЛЕНИЕ СТРЕЛОЧКАМИ ---
-        const setupBtn = (id, axis, val) => {
+        // Управление (Стрелочки)
+        const bind = (id, axis, val) => {
             const el = document.getElementById(id);
-            const start = (e) => { e.preventDefault(); input[axis] = val; };
-            const end = () => { input[axis] = 0; };
-            el.addEventListener('touchstart', start);
-            el.addEventListener('touchend', end);
-            el.addEventListener('mousedown', start);
-            el.addEventListener('mouseup', end);
+            el.addEventListener('touchstart', (e) => { e.preventDefault(); input[axis] = val; });
+            el.addEventListener('touchend', () => input[axis] = 0);
+            el.addEventListener('mousedown', () => input[axis] = val);
+            el.addEventListener('mouseup', () => input[axis] = 0);
         };
-
-        setupBtn('up', 'y', 1);
-        setupBtn('down', 'y', -1);
-        setupBtn('left', 'x', -1);
-        setupBtn('right', 'x', 1);
-
-        // Поддержка клавиатуры
-        window.addEventListener('keydown', (e) => {
-            if(e.key === 'ArrowLeft' || e.key === 'a') input.x = -1;
-            if(e.key === 'ArrowRight' || e.key === 'd') input.x = 1;
-            if(e.key === 'ArrowUp' || e.key === 'w') input.y = 1;
-            if(e.key === 'ArrowDown' || e.key === 's') input.y = -1;
-        });
-        window.addEventListener('keyup', () => { input.x = 0; input.y = 0; });
+        bind('up', 'y', 1); bind('down', 'y', -1); bind('left', 'x', -1); bind('right', 'x', 1);
 
         function animate() {
             if (isGameOver) return;
             requestAnimationFrame(animate);
 
-            owl.position.z -= speed;
+            owl.position.z -= currentSpeed;
             vel.x = (vel.x + input.x * 0.06) * 0.9;
             vel.y = (vel.y + input.y * 0.06) * 0.9;
             owl.position.x += vel.x;
             owl.position.y += vel.y;
 
-            // Анимация взмахов крыльями
-            const flap = Math.sin(Date.now() * 0.01) * 0.4;
-            leftWing.rotation.z = flap;
-            rightWing.rotation.z = -flap;
-
+            lW.rotation.z = Math.sin(Date.now() * 0.008) * 0.5;
+            rW.rotation.z = -Math.sin(Date.now() * 0.008) * 0.5;
             owl.rotation.z = -vel.x * 4;
             owl.rotation.x = vel.y * 2;
 
@@ -197,17 +167,34 @@
             camera.lookAt(owl.position.x, owl.position.y, owl.position.z - 5);
 
             portals.forEach(p => {
-                if (Math.abs(p.position.z - owl.position.z) < 0.6) {
-                    const d = Math.sqrt((owl.position.x-p.position.x)**2 + (owl.position.y-p.position.y)**2);
-                    if (d < 3.2) {
-                        score += 10; document.getElementById('score').innerText = score;
-                        p.position.z -= 280;
+                const dist = Math.sqrt((owl.position.x-p.position.x)**2 + (owl.position.y-p.position.y)**2);
+                
+                // Сбор духа
+                if (!p.userData.passed && Math.abs(p.position.z - owl.position.z) < 0.6) {
+                    if (dist < 3.2) {
+                        score += 10;
+                        document.getElementById('score').innerText = score;
+                        p.userData.passed = true;
+                        if (score % 100 === 0) currentSpeed += 0.02; // Плавное ускорение
                         tg.HapticFeedback.impactOccurred('medium');
                     }
                 }
+
+                // Пролет мимо портала
                 if (p.position.z > owl.position.z + 5) {
+                    if (!p.userData.passed) {
+                        lives--;
+                        document.getElementById('lives-box').innerText = "🜲".repeat(Math.max(0, lives));
+                        tg.HapticFeedback.notificationOccurred('error');
+                        if (lives <= 0) {
+                            isGameOver = true;
+                            document.getElementById('f-score').innerText = "SCORE: " + score;
+                            document.getElementById('game-over').style.display = 'flex';
+                        }
+                    }
+                    p.userData.passed = false;
                     p.position.z -= 280;
-                    p.position.x = Math.random()*16-8; p.position.y = Math.random()*12-6;
+                    p.position.x = Math.random()*14-7; p.position.y = Math.random()*10-5;
                 }
             });
 
@@ -215,7 +202,6 @@
         }
 
         animate();
-
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
