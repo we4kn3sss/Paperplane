@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Deadlock: Spirit Owl Slow</title>
+    <title>Deadlock: Spirit Owl Cinematic</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -21,12 +21,12 @@
         }
         #score-box { 
             position: absolute; top: env(safe-area-inset-top, 20px); left: 20px; 
-            font-weight: 900; font-size: 20px; color: #e1b16c; 
-            text-shadow: 0 0 10px rgba(225, 177, 108, 0.6);
+            font-weight: 900; font-size: 18px; color: #e1b16c; 
+            text-shadow: 0 0 8px rgba(225, 177, 108, 0.6);
         }
         #lives-box { 
             position: absolute; top: env(safe-area-inset-top, 20px); right: 20px; 
-            font-size: 22px; color: #e1b16c; letter-spacing: 3px;
+            font-size: 20px; color: #e1b16c; letter-spacing: 2px;
         }
 
         #controls {
@@ -36,18 +36,18 @@
             grid-template-areas: 
                 ". up ."
                 "left down right";
-            gap: 12px;
+            gap: 15px;
             pointer-events: auto;
         }
         .btn {
-            width: 65px; height: 65px;
+            width: 60px; height: 60px;
             background: rgba(0, 0, 0, 0.7);
-            border: 2px solid #e1b16c;
-            border-radius: 15px;
+            border: 1px solid rgba(225, 177, 108, 0.5);
+            border-radius: 50%; /* Сделаем круглыми для мягкости стиля */
             display: flex; justify-content: center; align-items: center;
-            color: #e1b16c; font-size: 24px; user-select: none;
+            color: #e1b16c; font-size: 22px; user-select: none;
         }
-        .btn:active { background: rgba(225, 177, 108, 0.4); }
+        .btn:active { background: rgba(225, 177, 108, 0.3); }
         #up { grid-area: up; }
         #down { grid-area: down; }
         #left { grid-area: left; }
@@ -60,8 +60,8 @@
             z-index: 100; pointer-events: auto; color: #e1b16c;
         }
         #restart-btn { 
-            padding: 15px 40px; background: #e1b16c; color: #000; 
-            border-radius: 8px; font-weight: bold; margin-top: 20px; cursor: pointer;
+            padding: 12px 35px; border: 1px solid #e1b16c; background: transparent; 
+            color: #e1b16c; border-radius: 4px; font-weight: bold; margin-top: 20px; cursor: pointer;
         }
     </style>
 </head>
@@ -81,8 +81,8 @@
         </div>
 
         <div id="game-over">
-            <h1>RECALL FAILED</h1>
-            <p id="f-score">SCORE: 0</p>
+            <h1 style="letter-spacing: 3px;">VOID REACHED</h1>
+            <p id="f-score">0</p>
             <div id="restart-btn" onclick="location.reload()">TRY AGAIN</div>
         </div>
     </div>
@@ -93,23 +93,26 @@
         const tg = window.Telegram.WebApp;
         tg.ready(); tg.expand();
 
-        // СКОРОСТЬ ЗАМЕДЛЕНА: 0.16 вместо 0.22
         let score = 0, lives = 3, isGameOver = false, currentSpeed = 0.16;
-        let input = { x: 0, y: 0 }, vel = { x: 0, y: 0 };
+        let input = { x: 0, y: 0 };
+        let vel = { x: 0, y: 0 }; // Текущая инерция
         
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050505);
-        scene.fog = new THREE.Fog(0x050505, 10, 80);
+        scene.background = new THREE.Color(0x020202);
+        scene.fog = new THREE.Fog(0x020202, 10, 90);
 
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.getElementById('game-canvas').appendChild(renderer.domElement);
 
         const owl = new THREE.Group();
+        // Сова стала чуть меньше (scale 0.8)
+        owl.scale.set(0.8, 0.8, 0.8);
+
         const energyMat = new THREE.MeshStandardMaterial({ 
-            color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 2.5,
+            color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 2.2,
             transparent: true, opacity: 0.8
         });
 
@@ -128,12 +131,12 @@
         scene.add(owl);
 
         owl.add(new THREE.PointLight(0x00ffff, 2, 12));
-        scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+        scene.add(new THREE.AmbientLight(0xffffff, 0.1));
 
         const portals = [];
-        const portMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 1, wireframe: true });
+        const portMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 0.8, wireframe: true });
         for(let i=0; i<8; i++) {
-            const p = new THREE.Mesh(new THREE.TorusGeometry(3, 0.05, 8, 24), portMat);
+            const p = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.04, 8, 24), portMat);
             p.position.set(Math.random()*12-6, Math.random()*8-4, -i*35 - 40);
             p.userData.passed = false;
             scene.add(p); portals.push(p);
@@ -154,48 +157,54 @@
             if (isGameOver) return;
             requestAnimationFrame(animate);
 
-            // Движение вперед (медленное)
             owl.position.z -= currentSpeed;
             
-            // Плавное маневрирование
-            vel.x = (vel.x + input.x * 0.04) * 0.92;
-            vel.y = (vel.y + input.y * 0.04) * 0.92;
+            // --- МЯГКОЕ УПРАВЛЕНИЕ (Инерция) ---
+            // Мы не просто прибавляем input, а плавно стремимся к нему
+            const targetVelX = input.x * 0.15;
+            const targetVelY = input.y * 0.12;
+            
+            // Коэффициент 0.05 дает очень плавный "вязкий" поворот
+            vel.x += (targetVelX - vel.x) * 0.06;
+            vel.y += (targetVelY - vel.y) * 0.06;
+            
             owl.position.x += vel.x;
             owl.position.y += vel.y;
 
             // Анимация крыльев
-            const flapSpeed = 0.005 + currentSpeed * 0.01;
-            lW.rotation.z = Math.sin(Date.now() * flapSpeed) * 0.5;
-            rW.rotation.z = -Math.sin(Date.now() * flapSpeed) * 0.5;
+            lW.rotation.z = Math.sin(Date.now() * 0.006) * 0.4;
+            rW.rotation.z = -Math.sin(Date.now() * 0.006) * 0.4;
             
-            owl.rotation.z = -vel.x * 3;
-            owl.rotation.x = vel.y * 2;
+            // Наклоны стали более плавными (зависят от текущей скорости vel)
+            owl.rotation.z = THREE.MathUtils.lerp(owl.rotation.z, -vel.x * 6, 0.1);
+            owl.rotation.x = THREE.MathUtils.lerp(owl.rotation.x, vel.y * 4, 0.1);
 
-            camera.position.set(owl.position.x*0.5, owl.position.y*0.5 + 1.5, owl.position.z + 7);
-            camera.lookAt(owl.position.x, owl.position.y, owl.position.z - 4);
+            // --- КАМЕРА ОТОДВИНУТА ---
+            // z + 9 (было 7) — сова теперь дальше от экрана
+            camera.position.set(owl.position.x*0.4, owl.position.y*0.4 + 2.2, owl.position.z + 9);
+            camera.lookAt(owl.position.x, owl.position.y, owl.position.z - 5);
 
             portals.forEach(p => {
                 const dist = Math.sqrt((owl.position.x-p.position.x)**2 + (owl.position.y-p.position.y)**2);
                 
-                if (!p.userData.passed && Math.abs(p.position.z - owl.position.z) < 0.7) {
-                    if (dist < 3.1) {
+                if (!p.userData.passed && Math.abs(p.position.z - owl.position.z) < 0.8) {
+                    if (dist < 3.3) {
                         score += 10;
                         document.getElementById('score').innerText = score;
                         p.userData.passed = true;
-                        // Медленное ускорение (раз в 150 очков)
-                        if (score > 0 && score % 150 === 0) currentSpeed += 0.015;
-                        tg.HapticFeedback.impactOccurred('medium');
+                        if (score > 0 && score % 150 === 0) currentSpeed += 0.012;
+                        tg.HapticFeedback.impactOccurred('light');
                     }
                 }
 
-                if (p.position.z > owl.position.z + 5) {
+                if (p.position.z > owl.position.z + 10) {
                     if (!p.userData.passed) {
                         lives--;
                         document.getElementById('lives-box').innerText = "🜲".repeat(Math.max(0, lives));
                         tg.HapticFeedback.notificationOccurred('error');
                         if (lives <= 0) {
                             isGameOver = true;
-                            document.getElementById('f-score').innerText = "SCORE: " + score;
+                            document.getElementById('f-score').innerText = "TOTAL SPIRIT: " + score;
                             document.getElementById('game-over').style.display = 'flex';
                         }
                     }
