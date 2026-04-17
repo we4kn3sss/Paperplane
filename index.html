@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Deadlock: Spirit Owl Cinematic</title>
+    <title>Deadlock: Spirit Owl Turbo</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -43,7 +43,7 @@
             width: 60px; height: 60px;
             background: rgba(0, 0, 0, 0.7);
             border: 1px solid rgba(225, 177, 108, 0.5);
-            border-radius: 50%; /* Сделаем круглыми для мягкости стиля */
+            border-radius: 50%;
             display: flex; justify-content: center; align-items: center;
             color: #e1b16c; font-size: 22px; user-select: none;
         }
@@ -81,9 +81,9 @@
         </div>
 
         <div id="game-over">
-            <h1 style="letter-spacing: 3px;">VOID REACHED</h1>
+            <h1 style="letter-spacing: 3px;">VELOCITY CRASH</h1>
             <p id="f-score">0</p>
-            <div id="restart-btn" onclick="location.reload()">TRY AGAIN</div>
+            <div id="restart-btn" onclick="location.reload()">REBOOT SPIRIT</div>
         </div>
     </div>
 
@@ -93,13 +93,15 @@
         const tg = window.Telegram.WebApp;
         tg.ready(); tg.expand();
 
-        let score = 0, lives = 3, isGameOver = false, currentSpeed = 0.16;
+        // НАСТРОЙКИ СКОРОСТИ (Ускорено в 2 раза)
+        let score = 0, lives = 3, isGameOver = false;
+        let currentSpeed = 0.32; 
         let input = { x: 0, y: 0 };
-        let vel = { x: 0, y: 0 }; // Текущая инерция
+        let vel = { x: 0, y: 0 }; 
         
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x020202);
-        scene.fog = new THREE.Fog(0x020202, 10, 90);
+        scene.fog = new THREE.Fog(0x020202, 15, 100);
 
         const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -108,11 +110,10 @@
         document.getElementById('game-canvas').appendChild(renderer.domElement);
 
         const owl = new THREE.Group();
-        // Сова стала чуть меньше (scale 0.8)
-        owl.scale.set(0.8, 0.8, 0.8);
+        owl.scale.set(0.75, 0.75, 0.75);
 
         const energyMat = new THREE.MeshStandardMaterial({ 
-            color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 2.2,
+            color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 2.5,
             transparent: true, opacity: 0.8
         });
 
@@ -130,14 +131,14 @@
         owl.add(lW, rW);
         scene.add(owl);
 
-        owl.add(new THREE.PointLight(0x00ffff, 2, 12));
+        owl.add(new THREE.PointLight(0x00ffff, 3, 15));
         scene.add(new THREE.AmbientLight(0xffffff, 0.1));
 
         const portals = [];
-        const portMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 0.8, wireframe: true });
-        for(let i=0; i<8; i++) {
-            const p = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.04, 8, 24), portMat);
-            p.position.set(Math.random()*12-6, Math.random()*8-4, -i*35 - 40);
+        const portMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 1, wireframe: true });
+        for(let i=0; i<10; i++) { // Увеличили количество порталов для плотности
+            const p = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.05, 8, 24), portMat);
+            p.position.set(Math.random()*14-7, Math.random()*10-5, -i*35 - 40);
             p.userData.passed = false;
             scene.add(p); portals.push(p);
         }
@@ -159,58 +160,60 @@
 
             owl.position.z -= currentSpeed;
             
-            // --- МЯГКОЕ УПРАВЛЕНИЕ (Инерция) ---
-            // Мы не просто прибавляем input, а плавно стремимся к нему
-            const targetVelX = input.x * 0.15;
-            const targetVelY = input.y * 0.12;
-            
-            // Коэффициент 0.05 дает очень плавный "вязкий" поворот
-            vel.x += (targetVelX - vel.x) * 0.06;
-            vel.y += (targetVelY - vel.y) * 0.06;
+            // Плавное маневрирование с инерцией
+            const targetVelX = input.x * 0.18;
+            const targetVelY = input.y * 0.15;
+            vel.x += (targetVelX - vel.x) * 0.08;
+            vel.y += (targetVelY - vel.y) * 0.08;
             
             owl.position.x += vel.x;
             owl.position.y += vel.y;
 
-            // Анимация крыльев
-            lW.rotation.z = Math.sin(Date.now() * 0.006) * 0.4;
-            rW.rotation.z = -Math.sin(Date.now() * 0.006) * 0.4;
+            // Анимация махов крыльями зависит от скорости
+            const flap = Date.now() * (0.005 + currentSpeed * 0.01);
+            lW.rotation.z = Math.sin(flap) * 0.5;
+            rW.rotation.z = -Math.sin(flap) * 0.5;
             
-            // Наклоны стали более плавными (зависят от текущей скорости vel)
-            owl.rotation.z = THREE.MathUtils.lerp(owl.rotation.z, -vel.x * 6, 0.1);
-            owl.rotation.x = THREE.MathUtils.lerp(owl.rotation.x, vel.y * 4, 0.1);
+            owl.rotation.z = THREE.MathUtils.lerp(owl.rotation.z, -vel.x * 5, 0.1);
+            owl.rotation.x = THREE.MathUtils.lerp(owl.rotation.x, vel.y * 3, 0.1);
 
-            // --- КАМЕРА ОТОДВИНУТА ---
-            // z + 9 (было 7) — сова теперь дальше от экрана
-            camera.position.set(owl.position.x*0.4, owl.position.y*0.4 + 2.2, owl.position.z + 9);
-            camera.lookAt(owl.position.x, owl.position.y, owl.position.z - 5);
+            // Камера на отдалении
+            camera.position.set(owl.position.x*0.4, owl.position.y*0.4 + 2.5, owl.position.z + 10);
+            camera.lookAt(owl.position.x, owl.position.y, owl.position.z - 6);
 
             portals.forEach(p => {
                 const dist = Math.sqrt((owl.position.x-p.position.x)**2 + (owl.position.y-p.position.y)**2);
                 
-                if (!p.userData.passed && Math.abs(p.position.z - owl.position.z) < 0.8) {
+                if (!p.userData.passed && Math.abs(p.position.z - owl.position.z) < 1.0) {
                     if (dist < 3.3) {
                         score += 10;
                         document.getElementById('score').innerText = score;
                         p.userData.passed = true;
-                        if (score > 0 && score % 150 === 0) currentSpeed += 0.012;
-                        tg.HapticFeedback.impactOccurred('light');
+                        
+                        // УСКОРЕНИЕ: +10% за каждые 100 очков
+                        if (score > 0 && score % 100 === 0) {
+                            currentSpeed *= 1.10;
+                            tg.HapticFeedback.notificationOccurred('success');
+                        } else {
+                            tg.HapticFeedback.impactOccurred('light');
+                        }
                     }
                 }
 
-                if (p.position.z > owl.position.z + 10) {
+                if (p.position.z > owl.position.z + 12) {
                     if (!p.userData.passed) {
                         lives--;
                         document.getElementById('lives-box').innerText = "🜲".repeat(Math.max(0, lives));
                         tg.HapticFeedback.notificationOccurred('error');
                         if (lives <= 0) {
                             isGameOver = true;
-                            document.getElementById('f-score').innerText = "TOTAL SPIRIT: " + score;
+                            document.getElementById('f-score').innerText = "SCORE: " + score;
                             document.getElementById('game-over').style.display = 'flex';
                         }
                     }
                     p.userData.passed = false;
-                    p.position.z -= 280;
-                    p.position.x = Math.random()*12-6; p.position.y = Math.random()*8-4;
+                    p.position.z -= 350; // Возвращаем портал далеко вперед
+                    p.position.x = Math.random()*14-7; p.position.y = Math.random()*10-5;
                 }
             });
 
