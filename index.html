@@ -3,210 +3,183 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Origami Flight TWA</title>
+    <title>Deadlock: Spirit Owl</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { 
-            margin: 0; 
-            overflow: hidden; 
-            background: #d1d9e0; 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            user-select: none;
-            -webkit-user-select: none;
-        }
-        
-        #ui { 
-            position: absolute; 
-            top: env(safe-area-inset-top, 20px); 
-            left: 20px; 
-            color: #444; 
-            font-size: 22px; 
-            font-weight: 800; 
-            pointer-events: none; 
-            z-index: 10;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            overflow: hidden; background: #0a0e17; 
+            position: fixed; font-family: 'serif';
         }
 
-        #controls { 
-            position: absolute; 
-            bottom: env(safe-area-inset-bottom, 30px); 
-            left: 50%; 
-            transform: translateX(-50%); 
-            display: grid; 
-            grid-template-columns: repeat(3, 75px); 
-            gap: 15px; 
-            z-index: 10;
-        }
-        
-        .btn { 
-            width: 75px; 
-            height: 75px; 
-            background: rgba(255,255,255,0.4); 
-            border: 1px solid rgba(255,255,255,0.6);
-            border-radius: 20px; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            font-size: 28px; 
-            color: #333; 
-            touch-action: manipulation; 
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        }
-        
-        .btn:active { 
-            background: rgba(255,255,255,0.7); 
-            transform: scale(0.9); 
-        }
+        #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
 
-        canvas { display: block; }
+        #ui {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 10;
+        }
+        
+        #score-box { 
+            position: absolute; top: 30px; left: 30px; 
+            font-weight: 700; font-size: 26px; color: #e1b16c;
+            text-shadow: 0 0 10px rgba(225, 177, 108, 0.4);
+        }
+        
+        #game-over { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(10, 14, 23, 0.95); display: none; 
+            flex-direction: column; justify-content: center; align-items: center; 
+            z-index: 100; pointer-events: auto; color: #e1b16c;
+        }
+        
+        #restart-btn { 
+            padding: 15px 40px; background: transparent; 
+            color: #e1b16c; border: 2px solid #e1b16c;
+            border-radius: 4px; font-weight: bold; font-size: 18px;
+            margin-top: 20px; cursor: pointer; text-transform: uppercase;
+        }
     </style>
 </head>
 <body>
 
-    <div id="ui">SCORE: <span id="score">0</span></div>
-    
-    <div id="controls">
-        <div></div><div class="btn" id="up">↑</div><div></div>
-        <div class="btn" id="left">←</div><div class="btn" id="down">↓</div><div class="btn" id="right">→</div>
+    <div id="game-canvas"></div>
+
+    <div id="ui">
+        <div id="score-box">SPIRIT COLLECTED: <span id="score">0</span></div>
+        
+        <div id="game-over">
+            <h1 style="letter-spacing: 5px;">RECALL SPIRIT</h1>
+            <p id="f-score">Total: 0</p>
+            <div id="restart-btn" onclick="location.reload()">Return to Void</div>
+        </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
     <script>
-        // Инициализация Telegram
         const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-        tg.headerColor = '#d1d9e0';
+        tg.ready(); tg.expand();
 
-        let score = 0;
-        const keys = { up: false, down: false, left: false, right: false };
+        let score = 0, isGameOver = false, speed = 0.28;
+        let vel = { x: 0, y: 0 };
+        const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, w: false, a: false, s: false, d: false };
 
-        // Сцена
+        // ГРАФИКА
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xd1d9e0);
-        scene.fog = new THREE.Fog(0xd1d9e0, 15, 90);
+        scene.background = new THREE.Color(0x0a0e17);
+        scene.fog = new THREE.Fog(0x0a0e17, 20, 100);
 
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('game-canvas').appendChild(renderer.domElement);
 
-        // Создание самолетика (Оригами)
-        const planeGroup = new THREE.Group();
-        const paperMat = new THREE.MeshStandardMaterial({ 
-            color: 0xffffff, 
-            side: THREE.DoubleSide,
-            roughness: 0.7,
-            metalness: 0.1
-        });
+        // МАТЕРИАЛЫ
+        const metalMat = new THREE.MeshStandardMaterial({ color: 0x3d3024, metalness: 0.8, roughness: 0.5 });
+        const glowMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 2 });
 
-        function createShape(pts) {
-            const s = new THREE.Shape();
-            s.moveTo(pts.x, pts.y);
-            for(let i=1; i<pts.length; i++) s.lineTo(pts[i].x, pts[i].y);
-            return new THREE.Mesh(new THREE.ShapeGeometry(s), paperMat);
-        }
+        // МОДЕЛЬ СОВЫ
+        const owl = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2, 6), metalMat);
+        body.rotation.x = Math.PI/2;
+        owl.add(body);
 
-        // Киль (низ)
-        const keel = new THREE.Mesh(new THREE.ConeGeometry(0.12, 2.2, 3), paperMat);
-        keel.rotation.x = Math.PI / 2;
-        keel.rotation.z = Math.PI;
-        keel.position.y = -0.15;
-        keel.scale.set(0.3, 1, 1);
-        planeGroup.add(keel);
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), metalMat);
+        head.position.z = -1;
+        owl.add(head);
 
-        // Основные крылья
-        const leftWing = createShape([{x:0,y:1.1}, {x:-1.3,y:-1}, {x:-0.2,y:-0.7}, {x:0,y:-0.5}]);
-        leftWing.rotation.x = -Math.PI / 2;
-        leftWing.rotation.y = -0.08;
-        planeGroup.add(leftWing);
+        const wingL = new THREE.Mesh(new THREE.BoxGeometry(2, 0.05, 0.8), metalMat);
+        wingL.position.x = -1;
+        const wingR = new THREE.Mesh(new THREE.BoxGeometry(2, 0.05, 0.8), metalMat);
+        wingR.position.x = 1;
+        owl.add(wingL, wingR);
 
-        const rightWing = createShape([{x:0,y:1.1}, {x:1.3,y:-1}, {x:0.2,y:-0.7}, {x:0,y:-0.5}]);
-        rightWing.rotation.x = -Math.PI / 2;
-        rightWing.rotation.y = 0.08;
-        planeGroup.add(rightWing);
+        const eyes = new THREE.Mesh(new THREE.SphereGeometry(0.1, 4, 4), glowMat);
+        eyes.position.z = -1.3;
+        owl.add(eyes);
 
-        scene.add(planeGroup);
-
-        // Свет
-        const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+        scene.add(owl);
+        scene.add(new THREE.AmbientLight(0x404040, 2));
+        const sun = new THREE.DirectionalLight(0xe1b16c, 1);
         sun.position.set(5, 10, 5);
         scene.add(sun);
-        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
 
-        // Кольца
-        const rings = [];
-        const ringMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x999999 });
-        function spawnRing(z) {
-            const ring = new THREE.Mesh(new THREE.TorusGeometry(2.4, 0.06, 12, 32), ringMat);
-            ring.position.set(Math.random()*16-8, Math.random()*10-5, z);
-            scene.add(ring);
-            rings.push(ring);
+        // ПОРТАЛЫ
+        const portals = [];
+        const portMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 1.5, wireframe: true });
+        for(let i=0; i<8; i++) {
+            const p = new THREE.Mesh(new THREE.TorusGeometry(3, 0.05, 8, 30), portMat);
+            p.position.set(Math.random()*16-8, Math.random()*10-5, -i*40 - 30);
+            scene.add(p); portals.push(p);
         }
-        for(let i=1; i<=7; i++) spawnRing(-i * 35);
 
-        // Управление
-        const setupControl = (id, key) => {
-            const el = document.getElementById(id);
-            const press = (e) => { e.preventDefault(); keys[key] = true; if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light'); };
-            const release = (e) => { e.preventDefault(); keys[key] = false; };
-            el.addEventListener('touchstart', press);
-            el.addEventListener('touchend', release);
-            el.addEventListener('mousedown', press);
-            el.addEventListener('mouseup', release);
-        };
-        ['up','down','left','right'].forEach(k => setupControl(k, k));
+        // УПРАВЛЕНИЕ КЛАВИАТУРОЙ
+        window.addEventListener('keydown', (e) => { if(keys.hasOwnProperty(e.key)) keys[e.key] = true; });
+        window.addEventListener('keyup', (e) => { if(keys.hasOwnProperty(e.key)) keys[e.key] = false; });
+
+        // УПРАВЛЕНИЕ ТАПАМИ (для мобилок без стика)
+        window.addEventListener('touchstart', (e) => {
+            const x = e.touches.clientX;
+            const y = e.touches.clientY;
+            if (x < window.innerWidth / 2) keys.a = true; else keys.d = true;
+            if (y < window.innerHeight / 2) keys.w = true; else keys.s = true;
+        });
+        window.addEventListener('touchend', () => { 
+            keys.a = keys.d = keys.w = keys.s = false; 
+        });
 
         function animate() {
+            if (isGameOver) return;
             requestAnimationFrame(animate);
 
-            planeGroup.position.z -= 0.3; // Скорость полета
+            // Логика управления стрелочками
+            if (keys.ArrowLeft || keys.a) vel.x -= 0.05;
+            if (keys.ArrowRight || keys.d) vel.x += 0.05;
+            if (keys.ArrowUp || keys.w) vel.y += 0.05;
+            if (keys.ArrowDown || keys.s) vel.y -= 0.05;
 
-            let rZ = 0, rX = 0;
-            const step = 0.15;
+            vel.x *= 0.9; vel.y *= 0.9;
+            owl.position.x += vel.x;
+            owl.position.y += vel.y;
+            owl.position.z -= speed;
 
-            if (keys.left) { planeGroup.position.x -= step; rZ = 0.6; }
-            if (keys.right) { planeGroup.position.x += step; rZ = -0.6; }
-            if (keys.up) { planeGroup.position.y += step; rX = -0.3; }
-            if (keys.down) { planeGroup.position.y -= step; rX = 0.3; }
+            // Наклоны
+            owl.rotation.z = -vel.x * 3;
+            owl.rotation.x = vel.y * 2;
+            wingL.rotation.z = Math.sin(Date.now()*0.01) * 0.3;
+            wingR.rotation.z = -Math.sin(Date.now()*0.01) * 0.3;
 
-            planeGroup.rotation.z = THREE.MathUtils.lerp(planeGroup.rotation.z, rZ, 0.1);
-            planeGroup.rotation.x = THREE.MathUtils.lerp(planeGroup.rotation.x, rX, 0.1);
+            camera.position.set(owl.position.x*0.5, owl.position.y*0.5 + 1.5, owl.position.z + 6);
+            camera.lookAt(owl.position.x, owl.position.y, owl.position.z - 5);
 
-            camera.position.set(
-                THREE.MathUtils.lerp(camera.position.x, planeGroup.position.x, 0.08),
-                THREE.MathUtils.lerp(camera.position.y, planeGroup.position.y + 1, 0.08),
-                planeGroup.position.z + 6
-            );
-            camera.lookAt(planeGroup.position.x, planeGroup.position.y, planeGroup.position.z - 4);
-
-            rings.forEach(r => {
-                if (planeGroup.position.distanceTo(r.position) < 2.5) {
-                    score += 10;
-                    document.getElementById('score').innerText = score;
-                    r.position.z -= 245;
-                    r.position.x = Math.random()*16-8;
-                    r.position.y = Math.random()*10-5;
-                    if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+            portals.forEach(p => {
+                if (Math.abs(p.position.z - owl.position.z) < 0.7) {
+                    const dist = Math.sqrt((owl.position.x-p.position.x)**2 + (owl.position.y-p.position.y)**2);
+                    if (dist < 3.2) {
+                        score += 10;
+                        document.getElementById('score').innerText = score;
+                        p.position.z -= 320;
+                        tg.HapticFeedback.impactOccurred('medium');
+                    }
                 }
-                if (r.position.z > planeGroup.position.z + 5) r.position.z -= 245;
+                if (p.position.z > owl.position.z + 5) {
+                    p.position.z -= 320;
+                    p.position.x = Math.random()*16-8; p.position.y = Math.random()*10-5;
+                }
             });
 
             renderer.render(scene, camera);
         }
+
+        animate();
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
-
-        animate();
     </script>
 </body>
 </html>
